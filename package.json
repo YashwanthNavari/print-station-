@@ -7,6 +7,9 @@
     "apps/print-station/client",
     "packages/*"
   ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present"
+  },
   "engines": {
     "node": ">=22.0.0"
   }

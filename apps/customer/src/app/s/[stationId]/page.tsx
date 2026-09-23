@@ -66,30 +66,60 @@ export default function StationPage({ params }: { params: Promise<{ stationId: s
     }, 200);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("stationId", stationId);
-      formData.append("copies", String(copies));
-      formData.append("color", String(color));
-      formData.append("doubleSided", String(doubleSided));
-
       const baseUrl = config.apiUrl;
-      const response = await fetch(`${baseUrl}/api/upload`, {
+
+      // Stage 1: Get upload URL from Cloud API
+      const initResponse = await fetch(`${baseUrl}/api/v1/jobs/uploads`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name }),
       });
+      
+      const initData = await initResponse.json().catch(() => ({}));
+      if (!initResponse.ok || !initData.uploadUrl) {
+        throw new Error(initData.error || "Failed to initialize upload.");
+      }
+
+      const { uploadUrl, storageKey, jobId: publicJobId } = initData;
+
+      // Stage 2: Direct upload to Object Storage (Supabase)
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: {
+          "Content-Type": file.type || "application/pdf"
+        }
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload file to storage.");
+      }
+
+      // Stage 3: Finalize job creation with Cloud API
+      const finalizeResponse = await fetch(`${baseUrl}/api/v1/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stationId,
+          filename: file.name,
+          storageKey,
+          copies,
+          color,
+          doubleSided,
+          jobId: publicJobId
+        }),
+      });
+
+      const finalizeData = await finalizeResponse.json().catch(() => ({}));
+      if (!finalizeResponse.ok || !finalizeData.id) {
+        throw new Error(finalizeData.error || "Failed to submit job.");
+      }
 
       clearInterval(progressInterval);
       setUploadProgress(100);
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success || !data.jobId) {
-        throw new Error(data.error || "Unable to connect to this PrintStation.");
-      }
       
       setTimeout(() => {
-        setJobId(data.jobId);
+        setJobId(publicJobId);
         setIsSuccess(true);
         setIsUploading(false);
       }, 400);
@@ -97,7 +127,7 @@ export default function StationPage({ params }: { params: Promise<{ stationId: s
     } catch (err: any) {
       clearInterval(progressInterval);
       let msg = err.message || "Upload timed out. Please try again.";
-      if (msg === "Failed to fetch") msg = "Unable to connect to this PrintStation.";
+      if (msg === "Failed to fetch") msg = "Unable to connect to the cloud API.";
       
       setError(`Upload rejected: ${msg}`);
       setIsUploading(false);

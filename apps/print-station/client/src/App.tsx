@@ -269,6 +269,7 @@ export default function App() {
 
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [viewerJob, setViewerJob] = useState<Job | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [printConfirmJob, setPrintConfirmJob] = useState<Job | null>(null);
   const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
   const [printerScanState, setPrinterScanState] = useState<'IDLE' | 'SCANNING'>('IDLE');
@@ -299,8 +300,9 @@ export default function App() {
   const fetchData = useCallback(async () => {
     if (authStatus !== 'AUTHENTICATED') return;
     try {
-      fetch(apiUrl('/api/health'), { credentials: 'include' }).then(r => r.json()).then(h => setHealth(h)).catch(() => {});
-      const resJobs = await fetch(apiUrl('/api/jobs'), { credentials: 'include' });
+      // For health, we'll fetch from cloud API
+      fetch(apiUrl('/api/v1/health'), { credentials: 'include' }).then(r => r.json()).then(h => setHealth(h)).catch(() => {});
+      const resJobs = await fetch(apiUrl('/api/v1/admin/jobs'), { credentials: 'include' });
       if (resJobs.status === 401) { setAuthStatus('LOGIN'); return; }
       const dataJobs = await resJobs.json();
       setJobs(Array.isArray(dataJobs) ? dataJobs : []);
@@ -360,39 +362,18 @@ export default function App() {
     }
   };
 
-  // Browser-native print: open PDF in a hidden iframe → trigger system print dialog → confirm
   const handlePrintConfirm = useCallback(async (job: Job) => {
-    // 1. Tell backend the print dialog is being opened → sets status = PRINTING
-    await fetch(apiUrl(`/api/jobs/${job.id}/print-dialog`), { method: 'POST', credentials: 'include' }).catch(() => {});
-    await fetchData();
-
-    // 2. Open a hidden iframe that loads the PDF, then auto-trigger window.print()
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0;';
-    iframe.src = apiUrl(`/api/jobs/${job.id}/document`);
-    document.body.appendChild(iframe);
-
-    iframe.onload = () => {
-      try {
-        // afterprint fires when the dialog closes (print or cancel)
-        iframe.contentWindow?.addEventListener('afterprint', () => {
-          document.body.removeChild(iframe);
-          // Show confirm modal — was the page actually printed?
-          setPrintConfirmJob(job);
-        }, { once: true });
-        iframe.contentWindow?.print();
-      } catch {
-        // Cross-origin / browser restriction fallback: open in new tab
-        document.body.removeChild(iframe);
-        const win = window.open(apiUrl(`/api/jobs/${job.id}/document`), '_blank');
-        if (win) {
-          win.onload = () => { win.print(); };
-        }
-        setPrintConfirmJob(job);
-      }
-    };
-
-    showToast(`Print dialog opened for "${job.filename}"`, 'success');
+    setIsActionLoading(job.id);
+    try {
+      const res = await fetch(apiUrl(`/api/v1/admin/jobs/${job.public_job_id || job.id}/retry`), { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error();
+      showToast(`Job retried: "${job.original_filename || job.filename}"`, 'success');
+      await fetchData();
+    } catch {
+      showToast('Failed to retry job.', 'error');
+    } finally {
+      setIsActionLoading(null);
+    }
   }, [fetchData]);
 
   const handleMarkPrinted = async (job: Job) => {
@@ -1181,10 +1162,24 @@ export default function App() {
               <div className="p-5 border-t border-[#e5e7eb] bg-white space-y-3">
                 {/* View Document Button */}
                 <button
-                  onClick={() => setViewerJob(selectedJob)}
-                  className="w-full py-3 rounded-xl font-semibold text-[14px] flex items-center justify-center gap-2 bg-white border border-[#e5e7eb] hover:bg-gray-50 text-[#111827] transition-colors"
+                  onClick={async () => {
+                    try {
+                      setIsActionLoading('viewer-' + selectedJob.id);
+                      const res = await fetch(apiUrl(`/api/v1/admin/jobs/${selectedJob.id}/document-url`), { credentials: 'include' });
+                      if (!res.ok) throw new Error();
+                      const { url } = await res.json();
+                      setViewerUrl(url);
+                      setViewerJob(selectedJob);
+                    } catch (e) {
+                      showToast('Failed to fetch document preview', 'error');
+                    } finally {
+                      setIsActionLoading(null);
+                    }
+                  }}
+                  disabled={isActionLoading === 'viewer-' + selectedJob.id}
+                  className="w-full py-3 rounded-xl font-semibold text-[14px] flex items-center justify-center gap-2 bg-white border border-[#e5e7eb] hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-[#111827] transition-colors"
                 >
-                  <Eye className="h-5 w-5" />
+                  {isActionLoading === 'viewer-' + selectedJob.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <Eye className="h-5 w-5" />}
                   View Document
                 </button>
 
@@ -1194,12 +1189,9 @@ export default function App() {
                     <CheckCircle2 className="h-5 w-5" /> Printed Successfully
                   </div>
                 ) : selectedJob.status === 'PRINTING' ? (
-                  <button
-                    onClick={() => handleMarkPrinted(selectedJob)}
-                    className="w-full py-3.5 rounded-xl font-semibold text-[15px] flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700 transition-colors"
-                  >
-                    <CheckCircle2 className="h-5 w-5" /> Mark as Printed
-                  </button>
+                  <div className="w-full py-3.5 rounded-xl font-semibold text-[15px] flex items-center justify-center gap-2 bg-blue-50 border border-blue-100 text-blue-700">
+                    <Loader2 className="h-5 w-5 animate-spin" /> Printing...
+                  </div>
                 ) : (
                   <button
                     onClick={() => handlePrintConfirm(selectedJob)}
@@ -1213,7 +1205,7 @@ export default function App() {
                     }`}
                   >
                     <Printer className="h-5 w-5" />
-                    {['FAILED', 'PRINT_FAILED'].includes(selectedJob.status) ? 'Retry — Open Print Dialog' : 'Print — Open System Dialog'}
+                    {['FAILED', 'PRINT_FAILED'].includes(selectedJob.status) ? 'Retry Print' : 'Retry Print'}
                   </button>
                 )}
 
@@ -1233,8 +1225,7 @@ export default function App() {
           Document Viewer Modal
       ------------------------------------------------ */}
       <AnimatePresence>
-        {viewerJob && (() => {
-          const fileUrl = apiUrl(`/api/jobs/${viewerJob.id}/document`);
+        {viewerJob && viewerUrl && (() => {
           const ext = viewerJob.filename.split('.').pop()?.toLowerCase() || 'pdf';
           const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(ext);
           return (
@@ -1262,14 +1253,14 @@ export default function App() {
                     <Printer className="h-4 w-4" /> Print
                   </button>
                   <a
-                    href={apiUrl(`/api/jobs/${viewerJob.id}/document`)}
+                    href={viewerUrl}
                     download={viewerJob.filename}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[13px] font-semibold transition-colors"
                   >
                     <Download className="h-4 w-4" /> Download
                   </a>
                   <a
-                    href={fileUrl}
+                    href={viewerUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[13px] font-semibold transition-colors"
@@ -1277,7 +1268,7 @@ export default function App() {
                     <Maximize2 className="h-4 w-4" /> Open Tab
                   </a>
                   <button
-                    onClick={() => setViewerJob(null)}
+                    onClick={() => { setViewerJob(null); setViewerUrl(null); }}
                     className="h-9 w-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
                   >
                     <X className="h-5 w-5" />
@@ -1286,10 +1277,10 @@ export default function App() {
               </div>
               <div className="flex-1 overflow-auto flex items-center justify-center p-4 md:p-8">
                 {isImage ? (
-                  <img src={fileUrl} alt={viewerJob.filename} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+                  <img src={viewerUrl} alt={viewerJob.filename} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
                 ) : (
                   <iframe
-                    src={`${fileUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
+                    src={`${viewerUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
                     title={viewerJob.filename}
                     className="w-full h-full rounded-lg shadow-2xl border-0"
                     style={{ minHeight: '70vh' }}
@@ -1301,82 +1292,7 @@ export default function App() {
         })()}
       </AnimatePresence>
 
-      {/* ------------------------------------------------
-          Print Confirmation Modal
-          (appears after system print dialog closes)
-      ------------------------------------------------ */}
-      <AnimatePresence>
-        {printConfirmJob && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4"
-          >
-            <div className="absolute inset-0 bg-[#111827]/60 backdrop-blur-sm" onClick={() => setPrintConfirmJob(null)} />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center text-center"
-            >
-              {/* Icon */}
-              <div className="h-16 w-16 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center mb-5">
-                <Printer className="h-8 w-8 text-blue-600" />
-              </div>
 
-              <h3 className="text-[22px] font-bold text-[#111827] mb-2">Did it print?</h3>
-              <p className="text-[14px] text-[#6b7280] mb-2">
-                <span className="font-semibold text-[#111827]">{printConfirmJob.filename}</span>
-              </p>
-              <p className="text-[13px] text-[#9ca3af] mb-7">
-                The system print dialog was opened. Confirm whether the document physically printed.
-              </p>
-
-              {/* Info strip */}
-              <div className="w-full bg-[#f6f7f9] rounded-xl p-4 mb-6 text-left space-y-2">
-                {[
-                  { label: 'Copies', val: printConfirmJob.copies },
-                  { label: 'Color', val: printConfirmJob.color_mode ? 'Color' : 'Black & White' },
-                  { label: 'Sides', val: printConfirmJob.page_range === 'double' ? 'Double-sided' : 'Single-sided' },
-                ].map((r, i) => (
-                  <div key={i} className="flex justify-between text-[13px]">
-                    <span className="text-[#6b7280]">{r.label}</span>
-                    <span className="font-semibold text-[#111827]">{r.val}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="w-full flex flex-col gap-3">
-                <button
-                  onClick={() => handleMarkPrinted(printConfirmJob)}
-                  disabled={isActionLoading === printConfirmJob.id}
-                  className="w-full py-3.5 rounded-xl font-bold text-[15px] bg-[#16A34A] text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  {isActionLoading === printConfirmJob.id
-                    ? <Loader2 className="h-5 w-5 animate-spin" />
-                    : <CheckCircle2 className="h-5 w-5" />
-                  }
-                  Yes — Mark as Printed
-                </button>
-                <button
-                  onClick={() => handleMarkFailed(printConfirmJob, 'Print cancelled or did not complete')}
-                  disabled={isActionLoading === printConfirmJob.id}
-                  className="w-full py-3 rounded-xl font-semibold text-[14px] text-red-600 bg-red-50 border border-red-100 hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
-                >
-                  <XCircle className="h-5 w-5" /> No — Mark as Failed
-                </button>
-                <button
-                  onClick={() => setPrintConfirmJob(null)}
-                  className="w-full py-2.5 rounded-xl font-semibold text-[13px] text-[#6b7280] hover:text-[#111827] transition-colors"
-                >
-                  Decide Later
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
     </div>
   );

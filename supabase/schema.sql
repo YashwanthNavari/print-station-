@@ -25,6 +25,16 @@ CREATE TABLE public.stations (
   created_at timestamp with time zone DEFAULT now()
 );
 
+-- Agent Sessions Table
+CREATE TABLE public.agent_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  station_id text REFERENCES public.stations(station_id) ON DELETE CASCADE,
+  last_heartbeat timestamp with time zone DEFAULT now(),
+  ip_address text,
+  version text,
+  created_at timestamp with time zone DEFAULT now()
+);
+
 -- Print Jobs Table
 CREATE TABLE public.print_jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -43,6 +53,15 @@ CREATE TABLE public.print_jobs (
   heartbeat_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
+);
+
+-- Job Events Table
+CREATE TABLE public.job_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid REFERENCES public.print_jobs(id) ON DELETE CASCADE,
+  event text NOT NULL, -- e.g., 'UPLOADED', 'RECEIVED', 'DOWNLOADING', 'LOCAL', 'PRINTING', 'COMPLETED'
+  message text,
+  created_at timestamp with time zone DEFAULT now()
 );
 
 -- RPC for Atomic Job Claiming & Stale Recovery
@@ -101,7 +120,9 @@ CREATE TRIGGER update_print_jobs_updated_at
 -- Row Level Security (RLS)
 -- Enable RLS
 ALTER TABLE public.stations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.print_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_events ENABLE ROW LEVEL SECURITY;
 
 -- Print Jobs RLS:
 -- 1. Anyone can insert a job (via the Next.js API, or the API can bypass RLS using service role)
@@ -113,7 +134,19 @@ ALTER TABLE public.print_jobs ENABLE ROW LEVEL SECURITY;
 -- to handle business logic securely, so we don't strictly need complex public RLS policies.
 -- We can just create a policy that allows service role to do everything.
 
-CREATE POLICY "Allow all actions for service role" ON public.print_jobs
+CREATE POLICY "Allow all actions for service role on print_jobs" ON public.print_jobs
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "Allow all actions for service role on stations" ON public.stations
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "Allow all actions for service role on agent_sessions" ON public.agent_sessions
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "Allow all actions for service role on job_events" ON public.job_events
     USING (true)
     WITH CHECK (true);
 

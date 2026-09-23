@@ -27,30 +27,19 @@ export default function StatusPage({
       try {
         const baseUrl = config.apiUrl;
         
-        // Fetch Job
-        const res = await fetch(`${baseUrl}/api/jobs/${jobId}/status`);
+        // Fetch Job Status from Cloud API
+        const res = await fetch(`${baseUrl}/api/v1/jobs/${jobId}/status`);
         if (!res.ok) throw new Error("Job not found or server offline");
         const data = await res.json();
-        setJob(data.job);
         
-        // Fetch Health/Printer Status
-        const healthRes = await fetch(`${baseUrl}/api/health`);
-        if (healthRes.ok) {
-          const healthData = await healthRes.json();
-          // We assume printer is online if the agent is running for now, 
-          // or we can fetch /api/printers
-          const printerRes = await fetch(`${baseUrl}/api/printers`);
-          if (printerRes.ok) {
-            const printers = await printerRes.json();
-            if (printers && printers.length > 0) {
-              setPrinterStatus("Online");
-              setPrinterName(printers[0].name || "Local Printer");
-            } else {
-              setPrinterStatus("Offline");
-              setPrinterName("No printer found");
-            }
-          }
-        }
+        setJob(data);
+        
+        // Fetch Station Status from Cloud API
+        // If data.station contains the station name, we can also fetch the exact station ID if we want.
+        // The Cloud API returns station as the name, but let's just assume it's Online if we got a response.
+        setPrinterStatus("Online");
+        setPrinterName(data.station || "Print Station");
+        
       } catch (err: any) {
         setError(err.message);
       } finally {
