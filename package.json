@@ -1,0 +1,13 @@
+{
+  "name": "printstation",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "apps/print-station/client",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+import { open } from 'sqlite'; import sqlite3 from 'sqlite3'; async function run() { const db = await open({ filename: 'printstation.db', driver: sqlite3.Database }); const row = await db.get('SELECT pin_hash FROM settings'); console.log('HASH:', row.pin_hash); } run();

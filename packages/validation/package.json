@@ -1,0 +1,11 @@
+{
+  "name": "@printstation/validation",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "types": "index.ts",
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,1 @@
+const token = '7d046b96-3ca7-41e9-95cb-e11187975c7d'; fetch('http://localhost:3000/api/jobs', { headers: { 'Cookie': 'session_token=' + token } }).then(async res => { console.log('Status:', res.status); console.log('Body:', await res.text()); });

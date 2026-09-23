@@ -1,0 +1,15 @@
+# Print Station Local Agent .gitignore
+node_modules/
+dist/
+*.db
+*.db-shm
+*.db-wal
+printstation.db
+downloads/
+uploads/
+tmp/
+.tmp/
+*.log
+.env
+.env.local
+.env.*.local

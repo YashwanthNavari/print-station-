@@ -1,0 +1,1 @@
+fetch('http://localhost:3000/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: '9999' }) }).then(res => { console.log('Cookies:', res.headers.get('set-cookie')); });
