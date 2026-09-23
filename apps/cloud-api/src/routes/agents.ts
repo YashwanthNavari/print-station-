@@ -36,7 +36,7 @@ router.use(authenticateAgent);
 // 1. Heartbeat
 router.post('/heartbeat', async (req: any, res: any) => {
   try {
-    const { agentVersion, printerStatus } = req.body;
+    const { agentVersion, printerStatus, storageHealthy, printerOnline } = req.body;
     const station = req.station;
     const ip = req.ip || req.connection.remoteAddress;
 
@@ -52,13 +52,17 @@ router.post('/heartbeat', async (req: any, res: any) => {
       await db.from('agent_sessions').update({
         last_heartbeat: new Date().toISOString(),
         ip_address: ip,
-        version: agentVersion
+        version: agentVersion,
+        printer_online: printerOnline,
+        storage_healthy: storageHealthy
       }).eq('id', existingSession.id);
     } else {
       await db.from('agent_sessions').insert({
         station_id: station.station_id,
         ip_address: ip,
-        version: agentVersion
+        version: agentVersion,
+        printer_online: printerOnline,
+        storage_healthy: storageHealthy
       });
     }
 

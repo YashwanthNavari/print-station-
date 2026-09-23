@@ -284,11 +284,10 @@ export default function App() {
   // Initialization & Auth
   const checkAuth = async () => {
     try {
-      const res = await fetch(apiUrl('/api/auth/status'), { credentials: 'include' });
+      const res = await fetch(apiUrl('/api/v1/admin/auth/status'), { credentials: 'include' });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      if (data.setupRequired) setAuthStatus('SETUP');
-      else if (data.loggedIn) setAuthStatus('AUTHENTICATED');
+      if (data.authenticated) setAuthStatus('AUTHENTICATED');
       else setAuthStatus('LOGIN');
     } catch {
       setTimeout(checkAuth, 3000);
@@ -334,7 +333,7 @@ export default function App() {
       scanPrinters();
       const jobInterval = setInterval(fetchData, 3000);
       const healthInterval = setInterval(() => {
-        fetch(apiUrl('/api/health'), { credentials: 'include' }).then(r => r.json()).then(h => setHealth(h)).catch(() => {});
+        fetch(apiUrl('/api/v1/health'), { credentials: 'include' }).then(r => r.json()).then(h => setHealth(h)).catch(() => {});
       }, 10000);
       return () => { clearInterval(jobInterval); clearInterval(healthInterval); };
     }
@@ -353,12 +352,12 @@ export default function App() {
       });
       if (res.ok) {
         setPin('');
-        setAuthStatus(endpoint === '/api/auth/setup' ? 'LOGIN' : 'AUTHENTICATED');
+        setAuthStatus('AUTHENTICATED');
       } else {
-        setPinError(endpoint === '/api/auth/setup' ? 'PIN must be at least 4 digits.' : 'Incorrect PIN. Please try again.');
+        setPinError('Incorrect PIN. Please try again.');
       }
     } catch {
-      setPinError('Cannot connect to PrintStation server.');
+      setPinError('Cannot connect to Cloud API.');
     }
   };
 
@@ -438,7 +437,7 @@ export default function App() {
     return (
       <div className="h-screen w-full bg-[#f6f7f9] flex items-center justify-center font-sans p-4">
         <form
-          onSubmit={e => handleAuthSubmit(e, authStatus === 'SETUP' ? '/api/auth/setup' : '/api/auth/login')}
+          onSubmit={e => handleAuthSubmit(e, '/api/v1/admin/auth/login')}
           className="bg-white border border-[#e5e7eb] p-8 rounded-2xl w-full max-w-sm shadow-sm"
         >
           <div className="h-12 w-12 bg-[#111827] text-white rounded-xl flex items-center justify-center mb-6">
@@ -446,7 +445,7 @@ export default function App() {
           </div>
           <h2 className="text-[#111827] text-2xl font-semibold tracking-tight mb-1">PrintStation</h2>
           <p className="text-[#6b7280] text-sm mb-6">
-            {authStatus === 'SETUP' ? 'Create a PIN to secure this station' : 'Enter your PIN to unlock the dashboard'}
+            Enter your PIN to unlock the dashboard
           </p>
           <input
             type="password"
@@ -463,7 +462,7 @@ export default function App() {
             type="submit"
             className="w-full bg-[#111827] text-white font-semibold py-3 rounded-xl hover:bg-gray-800 transition-colors shadow-sm mt-3"
           >
-            {authStatus === 'SETUP' ? 'Create PIN & Continue' : 'Unlock Dashboard'}
+            Unlock Dashboard
           </button>
         </form>
       </div>
@@ -624,7 +623,7 @@ export default function App() {
             {/* Admin button → lock/re-auth */}
             <button
               onClick={async () => {
-                await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
+                await fetch(apiUrl('/api/v1/admin/auth/logout'), { method: 'POST', credentials: 'include' });
                 setJobs([]);
                 setPrinters([]);
                 setHealth(null);
@@ -1035,7 +1034,7 @@ export default function App() {
                   <p className="text-[14px] text-[#6b7280] mb-5">Reset your admin PIN.</p>
                   <button
                     onClick={async () => {
-                      await fetch(apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
+                      await fetch(apiUrl('/api/v1/admin/auth/logout'), { method: 'POST', credentials: 'include' });
                       setAuthStatus('LOGIN');
                     }}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#111827] text-white text-[14px] font-semibold hover:bg-gray-800 transition-colors"

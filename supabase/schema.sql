@@ -32,6 +32,8 @@ CREATE TABLE public.agent_sessions (
   last_heartbeat timestamp with time zone DEFAULT now(),
   ip_address text,
   version text,
+  printer_online boolean DEFAULT true,
+  storage_healthy boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now()
 );
 

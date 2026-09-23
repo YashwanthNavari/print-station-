@@ -33,13 +33,15 @@ export class PrinterService {
        throw new Error("File not downloaded or missing locally");
     }
 
-    // We use public_job_id for cloud syncing, local id for sqlite
-    const publicJobId = job.public_job_id;
+    // We use cloud_job_id for cloud syncing, local id for sqlite
+    const publicJobId = job.cloud_job_id;
 
     try {
       // Transition to PRINTING
       await db.run(`UPDATE print_jobs SET status = 'PRINTING', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [jobId]);
-      if (publicJobId) await updateJobStatus(publicJobId, 'PRINTING');
+      if (publicJobId) {
+        updateJobStatus(publicJobId, 'PRINTING').catch(e => console.error('[PrinterService] Cloud sync error:', e));
+      }
 
       const settings = await db.get('SELECT printer_name FROM settings LIMIT 1');
       const printer = settings?.printer_name || undefined; // If undefined, uses system default
@@ -53,7 +55,9 @@ export class PrinterService {
 
       // Transition to COMPLETED
       await db.run(`UPDATE print_jobs SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [jobId]);
-      if (publicJobId) await updateJobStatus(publicJobId, 'COMPLETED');
+      if (publicJobId) {
+        updateJobStatus(publicJobId, 'COMPLETED').catch(e => console.error('[PrinterService] Cloud sync error:', e));
+      }
       
       // Log to history
       await db.run(`INSERT INTO print_history (job_id, action, details) VALUES (?, ?, ?)`, 
@@ -65,7 +69,10 @@ export class PrinterService {
       // Transition to PRINT_FAILED
       await db.run(`UPDATE print_jobs SET status = 'PRINT_FAILED', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, 
                    [error.message || String(error), jobId]);
-      if (publicJobId) await updateJobStatus(publicJobId, 'PRINT_FAILED', error.message || String(error));
+      if (publicJobId) {
+        updateJobStatus(publicJobId, 'PRINT_FAILED', error.message || String(error))
+          .catch(e => console.error('[PrinterService] Cloud sync error:', e));
+      }
                    
       await db.run(`INSERT INTO print_history (job_id, action, details) VALUES (?, ?, ?)`, 
                    [jobId, 'PRINT_ERROR', error.message || String(error)]);

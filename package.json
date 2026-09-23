@@ -4,13 +4,16 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "apps/print-station/client",
+    "apps/print-station",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present"
+    "dev": "concurrently \"npm run dev -w apps/cloud-api\" \"npm run dev -w apps/customer\" \"npm run dev -w apps/print-station\""
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
   }
 }

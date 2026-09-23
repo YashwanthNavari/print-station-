@@ -1,7 +1,55 @@
 import { Router } from 'express';
 import { db } from '../db';
+import crypto from 'crypto';
 
 const router = Router();
+
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'secret';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '1234';
+
+const requireAdminAuth = (req: any, res: any, next: any) => {
+  const token = req.cookies?.admin_session;
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const expectedToken = crypto.createHash('sha256').update(ADMIN_SECRET).digest('hex');
+  if (token !== expectedToken) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+};
+
+router.get('/auth/status', (req: any, res: any) => {
+  const token = req.cookies?.admin_session;
+  const expectedToken = crypto.createHash('sha256').update(ADMIN_SECRET).digest('hex');
+  
+  if (token === expectedToken) {
+    return res.json({ authenticated: true });
+  }
+  return res.json({ authenticated: false, needsSetup: false });
+});
+
+router.post('/auth/login', (req: any, res: any) => {
+  const { pin } = req.body;
+  if (pin === ADMIN_PASSWORD) {
+    const token = crypto.createHash('sha256').update(ADMIN_SECRET).digest('hex');
+    res.cookie('admin_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 1 week
+    });
+    return res.json({ success: true });
+  }
+  return res.status(401).json({ error: 'Invalid PIN' });
+});
+
+router.post('/auth/logout', (req: any, res: any) => {
+  res.clearCookie('admin_session');
+  res.json({ success: true });
+});
+
+router.use(requireAdminAuth);
 
 router.get('/jobs', async (req, res) => {
   try {

@@ -7,7 +7,7 @@ const STATION_ID = process.env.STATION_ID || 'PS-TEST-001';
 const AGENT_TOKEN = process.env.AGENT_TOKEN || 'secret';
 const AGENT_VERSION = '1.0.0';
 
-export async function sendHeartbeat(printerStatus: string = 'READY') {
+export async function sendHeartbeat(printerStatus: string = 'READY', storageHealthy: boolean = true, printerOnline: boolean = true) {
   try {
     const res = await fetch(`${CLOUD_API_URL}/api/v1/agents/heartbeat`, {
       method: 'POST',
@@ -16,7 +16,7 @@ export async function sendHeartbeat(printerStatus: string = 'READY') {
         'Authorization': `Bearer ${AGENT_TOKEN}`,
         'x-station-id': STATION_ID
       },
-      body: JSON.stringify({ agentVersion: AGENT_VERSION, printerStatus })
+      body: JSON.stringify({ agentVersion: AGENT_VERSION, printerStatus, storageHealthy, printerOnline })
     });
     if (!res.ok) throw new Error(`Heartbeat failed: ${res.statusText}`);
   } catch (err) {
@@ -63,6 +63,7 @@ export async function downloadFile(url: string, destPath: string): Promise<boole
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
+    if (!res.body) throw new Error(`No response body`);
     
     // Ensure directory exists
     const dir = path.dirname(destPath);
@@ -72,8 +73,11 @@ export async function downloadFile(url: string, destPath: string): Promise<boole
     
     const fileStream = fs.createWriteStream(destPath);
     return new Promise((resolve, reject) => {
-      res.body.pipe(fileStream);
-      res.body.on('error', reject);
+      const { Readable } = require('stream');
+      const stream = Readable.fromWeb(res.body as any);
+      stream.pipe(fileStream);
+      stream.on('error', reject);
+      fileStream.on('error', reject);
       fileStream.on('finish', () => resolve(true));
     });
   } catch (err) {

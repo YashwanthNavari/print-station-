@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { db } from './db';
 import jobsRouter from './routes/jobs';
@@ -19,6 +20,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(cookieParser());
 
 app.use('/api/v1/jobs', jobsRouter);
 app.use('/api/v1/stations', stationsRouter);

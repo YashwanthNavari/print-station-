@@ -57,7 +57,7 @@ export default function StationPage({ params }: { params: Promise<{ stationId: s
     setUploadProgress(0);
     setError(null);
     
-    // Simulate upload progress
+    // Simulate upload progress loosely
     const progressInterval = setInterval(() => {
       setUploadProgress(prev => {
         if (prev >= 90) return prev;
@@ -68,58 +68,52 @@ export default function StationPage({ params }: { params: Promise<{ stationId: s
     try {
       const baseUrl = config.apiUrl;
 
-      // Stage 1: Get upload URL from Cloud API
-      const initResponse = await fetch(`${baseUrl}/api/v1/jobs/uploads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name }),
-      });
-      
-      const initData = await initResponse.json().catch(() => ({}));
-      if (!initResponse.ok || !initData.uploadUrl) {
-        throw new Error(initData.error || "Failed to initialize upload.");
-      }
-
-      const { uploadUrl, storageKey, jobId: publicJobId } = initData;
-
-      // Stage 2: Direct upload to Object Storage (Supabase)
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type || "application/pdf"
-        }
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload file to storage.");
-      }
-
-      // Stage 3: Finalize job creation with Cloud API
-      const finalizeResponse = await fetch(`${baseUrl}/api/v1/jobs`, {
+      // 1. Get Signed URL from Cloud API
+      const createRes = await fetch(`${baseUrl}/api/v1/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           stationId,
-          filename: file.name,
-          storageKey,
           copies,
           color,
           doubleSided,
-          jobId: publicJobId
+          filename: file.name,
+          fileSize: file.size
         }),
       });
 
-      const finalizeData = await finalizeResponse.json().catch(() => ({}));
-      if (!finalizeResponse.ok || !finalizeData.id) {
-        throw new Error(finalizeData.error || "Failed to submit job.");
+      const createData = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || !createData.jobId || !createData.uploadUrl) {
+        throw new Error(createData.error || "Failed to initialize job.");
+      }
+
+      // 2. Upload file directly to Supabase Storage
+      const uploadRes = await fetch(createData.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/pdf"
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("File upload to storage failed.");
+      }
+
+      // 3. Finalize Job
+      const finalizeRes = await fetch(`${baseUrl}/api/v1/jobs/${createData.jobId}/finalize`, {
+        method: "POST",
+      });
+
+      if (!finalizeRes.ok) {
+        throw new Error("Failed to finalize job.");
       }
 
       clearInterval(progressInterval);
       setUploadProgress(100);
       
       setTimeout(() => {
-        setJobId(publicJobId);
+        setJobId(createData.jobId);
         setIsSuccess(true);
         setIsUploading(false);
       }, 400);
