@@ -28,6 +28,10 @@ app.use('/api/v1/agents', agentsRouter);
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/admin', adminRouter);
 
-app.listen(PORT, () => {
-  console.log(`Cloud API is running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production' || require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Cloud API is running on port ${PORT}`);
+  });
+}
+
+export default app;
